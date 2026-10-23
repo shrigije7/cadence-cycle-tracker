@@ -1,0 +1,912 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Cadence Cycle Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+  /* Layout: a calm two-column workspace — calendar beside a day log + basal-temperature chart —
+     collapsing to one column on phones. Palette grounded in clinical cycle charts: rose = menstruation,
+     teal-green = fertile window, deep amber = ovulation, plum = the temperature trace. */
+  :root{
+    --paper:#FBF6F3; --surface:#FFFFFF; --surface-2:#F6EEE9;
+    --ink:#2B2127; --muted:#8C7E85; --hair:#ECE0DA; --hair-strong:#DFD0C8;
+    --period:#C64B6E; --period-fill:#F7DCE4;
+    --fertile:#2E8E7E; --fertile-fill:#DCEEE9;
+    --ovulation:#B9771C; --ovulation-fill:#F6E6CF;
+    --accent:#7A4FA3; --accent-soft:#EFE6F5;
+    --good:#2E8E7E; --shadow:0 1px 2px rgba(43,33,39,.06),0 8px 24px rgba(43,33,39,.06);
+    --r:14px; --r-sm:9px;
+    --display:'Fraunces',Georgia,'Times New Roman',serif;
+    --body:'Hanken Grotesk',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --paper:#191318; --surface:#241C22; --surface-2:#2E242B;
+    --ink:#F3E9EE; --muted:#AC9BA3; --hair:#382C34; --hair-strong:#463743;
+    --period:#EC8AA2; --period-fill:#45252F;
+    --fertile:#5EC3B0; --fertile-fill:#1E3B37;
+    --ovulation:#E6A94D; --ovulation-fill:#3E3220;
+    --accent:#C198E4; --accent-soft:#322441;
+    --good:#5EC3B0; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }}
+  :root[data-theme="dark"]{
+    --paper:#191318; --surface:#241C22; --surface-2:#2E242B;
+    --ink:#F3E9EE; --muted:#AC9BA3; --hair:#382C34; --hair-strong:#463743;
+    --period:#EC8AA2; --period-fill:#45252F;
+    --fertile:#5EC3B0; --fertile-fill:#1E3B37;
+    --ovulation:#E6A94D; --ovulation-fill:#3E3220;
+    --accent:#C198E4; --accent-soft:#322441;
+    --good:#5EC3B0; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--paper);color:var(--ink);font-family:var(--body);line-height:1.5;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{font-family:var(--display);font-weight:600;margin:0;text-wrap:balance;letter-spacing:-.01em}
+  .wrap{max-width:1140px;margin-inline:auto;padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));padding-block:22px 48px}
+  button{font-family:inherit;color:inherit;cursor:pointer}
+  .num{font-variant-numeric:tabular-nums}
+
+  /* header */
+  header.top{display:flex;flex-wrap:wrap;gap:14px 18px;align-items:flex-end;justify-content:space-between;margin-bottom:18px}
+  .brand h1{font-size:clamp(1.5rem,1.1rem + 2vw,2rem);line-height:1.05}
+  .brand .mark{color:var(--period)}
+  .brand p{margin:.3rem 0 0;color:var(--muted);font-size:.9rem;max-width:46ch}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap}
+  .btn{border:1px solid var(--hair-strong);background:var(--surface);border-radius:999px;padding:.5rem .85rem;font-size:.84rem;font-weight:600;display:inline-flex;align-items:center;gap:.4rem;transition:background .15s,border-color .15s}
+  .btn:hover{background:var(--surface-2)}
+  .btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+  .btn.ghost:hover{color:var(--ink);background:var(--surface-2)}
+
+  /* summary tiles */
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+  .tile{background:var(--surface);border:1px solid var(--hair);border-radius:var(--r);padding:14px 15px;box-shadow:var(--shadow);min-width:0}
+  .tile .k{font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .tile .v{font-family:var(--display);font-size:1.5rem;font-weight:600;margin-top:.2rem;line-height:1.1}
+  .tile .s{font-size:.8rem;color:var(--muted);margin-top:.15rem}
+  .tile.lead{background:linear-gradient(160deg,var(--accent-soft),var(--surface) 72%)}
+  .tile .dot{display:inline-block;width:.6em;height:.6em;border-radius:50%;vertical-align:middle;margin-right:.35em}
+
+  /* main grid */
+  .grid{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,1fr);gap:18px;align-items:start}
+  .card{background:var(--surface);border:1px solid var(--hair);border-radius:var(--r);box-shadow:var(--shadow);padding:16px}
+  .card h2{font-size:1.05rem;display:flex;align-items:center;gap:.5rem}
+  .card .sub{color:var(--muted);font-size:.82rem}
+  .cardhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+  .stack{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+  /* calendar */
+  .calnav{display:flex;align-items:center;gap:8px}
+  .calnav b{font-family:var(--display);font-size:1rem;min-width:9.5ch;text-align:center}
+  .iconbtn{border:1px solid var(--hair-strong);background:var(--surface);border-radius:9px;width:30px;height:30px;display:grid;place-items:center;font-size:1rem;line-height:1}
+  .iconbtn:hover{background:var(--surface-2)}
+  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px}
+  .dow span{text-align:center;font-size:.68rem;font-weight:700;letter-spacing:.04em;color:var(--muted);text-transform:uppercase}
+  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .cell{position:relative;aspect-ratio:1/1;border:1px solid transparent;border-radius:10px;background:var(--surface-2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:.9rem;font-weight:600;min-width:0;padding:2px}
+  .cell.pad{background:transparent;pointer-events:none}
+  .cell:not(.pad){cursor:pointer}
+  .cell:not(.pad):hover{border-color:var(--accent)}
+  .cell.sel{outline:2.5px solid var(--accent);outline-offset:1px}
+  .cell.today .daynum{text-decoration:underline;text-underline-offset:2px}
+  .cell.period{background:var(--period-fill);color:var(--period)}
+  .cell.predperiod{background:repeating-linear-gradient(45deg,var(--period-fill),var(--period-fill) 5px,transparent 5px,transparent 10px)}
+  .cell.fertile{background:var(--fertile-fill)}
+  .cell.period.fertile{background:linear-gradient(135deg,var(--period-fill) 50%,var(--fertile-fill) 50%)}
+  .cell .daynum{line-height:1}
+  .cell .marks{display:flex;gap:3px;height:9px;align-items:center}
+  .m{width:7px;height:7px;border-radius:50%}
+  .m.temp{background:var(--accent)}
+  .m.intim{width:auto;height:auto;color:var(--period);font-size:.62rem;line-height:1}
+  .ovring{position:absolute;top:3px;right:3px;width:12px;height:12px;border-radius:50%;background:var(--ovulation);box-shadow:0 0 0 2px var(--surface);display:grid;place-items:center}
+  .ovring.pred{background:transparent;border:2px dashed var(--ovulation)}
+  .ovlabel{position:absolute;bottom:2px;font-size:.52rem;font-weight:700;color:var(--ovulation);letter-spacing:.03em}
+
+  /* legend */
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:14px;font-size:.76rem;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:.4rem}
+  .sw{width:13px;height:13px;border-radius:4px;border:1px solid var(--hair-strong)}
+  .sw.period{background:var(--period-fill);border-color:var(--period)}
+  .sw.fertile{background:var(--fertile-fill);border-color:var(--fertile)}
+  .sw.ov{background:var(--ovulation)}
+  .sw.pred{background:repeating-linear-gradient(45deg,var(--period-fill),var(--period-fill) 3px,transparent 3px,transparent 6px);border-color:var(--period)}
+
+  /* day log */
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+  .field > label{font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .seg{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{border:1px solid var(--hair-strong);background:var(--surface);border-radius:999px;padding:.34rem .7rem;font-size:.82rem;font-weight:600;color:var(--muted)}
+  .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  .chip.period[aria-pressed="true"]{background:var(--period);border-color:var(--period);color:#fff}
+  .chip.ov[aria-pressed="true"]{background:var(--ovulation);border-color:var(--ovulation);color:#fff}
+  .symchip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  .moodchip[aria-pressed="true"]{background:var(--fertile);border-color:var(--fertile);color:#fff}
+  :root[data-theme="dark"] .chip.period[aria-pressed="true"],:root[data-theme="dark"] .chip.ov[aria-pressed="true"],:root[data-theme="dark"] .symchip[aria-pressed="true"],:root[data-theme="dark"] .moodchip[aria-pressed="true"]{color:#1b1016}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .chip.period[aria-pressed="true"],:root:not([data-theme="light"]) .chip.ov[aria-pressed="true"],:root:not([data-theme="light"]) .symchip[aria-pressed="true"],:root:not([data-theme="light"]) .moodchip[aria-pressed="true"]{color:#1b1016}}
+  input[type=number],input[type=text],select{font-family:inherit;font-size:.9rem;color:var(--ink);background:var(--surface);border:1px solid var(--hair-strong);border-radius:var(--r-sm);padding:.5rem .6rem;width:100%}
+  input:focus-visible,select:focus-visible,.chip:focus-visible,.btn:focus-visible,.iconbtn:focus-visible,.cell:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
+  .tempwrap{display:flex;gap:8px;align-items:center}
+  .tempwrap input{max-width:9rem}
+  .checkline{display:flex;align-items:center;gap:.5rem;font-size:.85rem;color:var(--muted)}
+  .checkline input{width:auto}
+  .dayhead{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px}
+  .dayhead .cd{font-size:.78rem;color:var(--muted);font-weight:600}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+  .chipgrid{display:flex;flex-wrap:wrap;gap:6px}
+  .hint{font-weight:500;text-transform:none;letter-spacing:0;color:var(--muted);font-size:.72rem;margin-left:.4em}
+  .symchip .sev{margin-left:.35em;letter-spacing:-1.5px;font-size:.82em;opacity:.95}
+  .m.note{background:var(--muted);opacity:.6}
+  .trends{margin-top:18px}
+  .trendgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px 30px}
+  .trh{font-size:.9rem;margin:0 0 12px;display:flex;align-items:center;gap:.45rem;font-family:var(--body);font-weight:700}
+  .trh::before{content:"";width:9px;height:9px;border-radius:3px;background:var(--accent)}
+  .trh.mood::before{background:var(--fertile)}
+  .trendrow{display:grid;grid-template-columns:7.5rem 1fr auto;gap:10px;align-items:center;margin-bottom:9px}
+  .trendrow .nm{font-size:.85rem;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .track{height:10px;border-radius:6px;background:var(--surface-2);overflow:hidden}
+  .track .fill{height:100%;border-radius:6px;min-width:3px}
+  .trendrow .ct{font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .trendempty{color:var(--muted);font-size:.84rem;padding:6px 0}
+  .tw[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+  @media (max-width:620px){.trendgrid{grid-template-columns:1fr}}
+
+  /* chart */
+  .chartwrap{position:relative;width:100%}
+  svg.chart{width:100%;height:auto;display:block;overflow:visible}
+  .cyclesel{display:flex;align-items:center;gap:8px}
+  .cyclesel b{font-family:var(--display);font-size:.95rem;min-width:13ch;text-align:center}
+  .chartlegend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:.76rem;color:var(--muted)}
+  .chartlegend span{display:inline-flex;align-items:center;gap:.4rem}
+  .lline{width:16px;height:0;border-top:2.5px solid var(--accent)}
+  .lcover{width:16px;height:0;border-top:2px dashed var(--ovulation)}
+  .tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--paper);font-size:.73rem;padding:.35rem .5rem;border-radius:7px;white-space:nowrap;transform:translate(-50%,-115%);opacity:0;transition:opacity .1s;z-index:5;font-weight:600}
+  .tip .num{font-weight:700}
+  .empty{color:var(--muted);font-size:.86rem;padding:30px 6px;text-align:center}
+
+  /* settings */
+  details.settings{margin-top:18px;border:1px solid var(--hair);border-radius:var(--r);background:var(--surface);box-shadow:var(--shadow)}
+  details.settings>summary{cursor:pointer;padding:13px 16px;font-weight:700;font-size:.9rem;list-style:none;display:flex;align-items:center;gap:.5rem}
+  details.settings>summary::-webkit-details-marker{display:none}
+  details.settings>summary::after{content:"▸";margin-left:auto;color:var(--muted);transition:transform .15s}
+  details.settings[open]>summary::after{transform:rotate(90deg)}
+  .setbody{padding:4px 16px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 16px}
+  .setbody .field{margin:0}
+  footer{margin-top:26px;color:var(--muted);font-size:.78rem;line-height:1.55}
+  footer a{color:var(--accent)}
+  .sron{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+  @media (max-width:860px){
+    .grid{grid-template-columns:1fr}
+    .tiles{grid-template-columns:1fr 1fr}
+  }
+  @media (max-width:420px){
+    .cell{font-size:.8rem}
+    .tile .v{font-size:1.3rem}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1><span class="mark">Cadence</span> Cycle Tracker</h1>
+      <p>Log your period, basal body temperature and fertility signs. Ovulation, the fertile window and your next period are predicted on-device.</p>
+    </div>
+    <div class="toolbar">
+      <button class="btn ghost" id="themeBtn" title="Toggle light / dark">◐ Theme</button>
+      <button class="btn ghost" id="sampleBtn" title="Reload example data">Sample data</button>
+      <button class="btn ghost" id="clearBtn" title="Erase everything on this device">Clear all</button>
+    </div>
+  </header>
+
+  <section class="tiles" id="tiles" aria-label="Cycle summary"></section>
+
+  <div class="grid">
+    <section class="card" aria-labelledby="calh">
+      <div class="cardhead">
+        <h2 id="calh">Calendar</h2>
+        <div class="calnav">
+          <button class="iconbtn" id="prevMonth" aria-label="Previous month">‹</button>
+          <b id="monthLabel" class="num"></b>
+          <button class="iconbtn" id="nextMonth" aria-label="Next month">›</button>
+        </div>
+      </div>
+      <div class="dow"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+      <div class="cal" id="cal"></div>
+      <div class="legend" aria-hidden="false">
+        <span><i class="sw period"></i>Period</span>
+        <span><i class="sw pred"></i>Predicted period</span>
+        <span><i class="sw fertile"></i>Fertile window</span>
+        <span><i class="sw ov"></i>Ovulation</span>
+        <span><i class="m temp" style="display:inline-block"></i>Temp logged</span>
+        <span><i class="m note" style="display:inline-block"></i>Symptoms / moods</span>
+        <span>♥ Intimate</span>
+      </div>
+    </section>
+
+    <div class="stack">
+      <section class="card" aria-labelledby="dayh" id="dayCard">
+        <div class="dayhead">
+          <h2 id="dayh">Daily log</h2>
+          <span class="cd" id="dayMeta"></span>
+        </div>
+        <div class="field">
+          <div class="seg">
+            <button class="chip period" id="periodChip" aria-pressed="false">● On period</button>
+            <button class="chip ov" id="ovChip" aria-pressed="false">★ Ovulation (manual)</button>
+            <button class="chip" id="intimChip" aria-pressed="false">♥ Intimate</button>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label for="tempInput">Basal body temp (<span id="unitLbl">°C</span>)</label>
+            <div class="tempwrap">
+              <input type="number" id="tempInput" step="0.01" inputmode="decimal" placeholder="—">
+            </div>
+            <label class="checkline" style="text-transform:none;letter-spacing:0;font-weight:500"><input type="checkbox" id="disregard"> Disregard this temp</label>
+          </div>
+          <div class="field">
+            <label for="opkSel">Ovulation test (OPK)</label>
+            <select id="opkSel"><option value="0">—</option><option value="1">Negative</option><option value="2">Positive</option></select>
+          </div>
+          <div class="field">
+            <label for="cmSel">Cervical mucus</label>
+            <select id="cmSel"><option value="0">—</option><option value="1">Dry</option><option value="2">Sticky</option><option value="3">Creamy</option><option value="4">Watery</option><option value="5">Egg white</option></select>
+          </div>
+          <div class="field">
+            <label for="fmSel">Fertility monitor</label>
+            <select id="fmSel"><option value="0">—</option><option value="1">Low</option><option value="2">High</option><option value="3">Peak</option></select>
+          </div>
+          <div class="field">
+            <label for="fernSel">Saliva ferning</label>
+            <select id="fernSel"><option value="0">—</option><option value="1">Partial</option><option value="2">Full</option></select>
+          </div>
+          <div class="field">
+            <label for="ovwSel">Wearable reading</label>
+            <select id="ovwSel"><option value="0">—</option><option value="1">Not fertile</option><option value="2">Fertile</option><option value="6">Ovulation</option><option value="8">Low fertility</option></select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Symptoms <span class="hint">tap to cycle through light · moderate · heavy</span></label>
+          <div class="chipgrid" id="symChips"></div>
+        </div>
+        <div class="field">
+          <label>Moods</label>
+          <div class="chipgrid" id="moodChips"></div>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label for="noteInput">Note</label>
+          <input type="text" id="noteInput" maxlength="140" placeholder="Anything worth remembering…">
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="charth">
+        <div class="cardhead">
+          <h2 id="charth">Fertility chart</h2>
+          <div class="cyclesel">
+            <button class="iconbtn" id="prevCycle" aria-label="Previous cycle">‹</button>
+            <b id="cycleLabel"></b>
+            <button class="iconbtn" id="nextCycle" aria-label="Next cycle">›</button>
+          </div>
+        </div>
+        <div class="chartwrap">
+          <div id="chart"></div>
+          <div class="tip" id="tip"></div>
+        </div>
+        <div class="chartlegend">
+          <span><i class="lline"></i>Basal temp</span>
+          <span><i class="lcover"></i>Coverline</span>
+          <span><i class="sw fertile"></i>Fertile window</span>
+          <span><i class="sw period"></i>Period</span>
+          <span><i class="sw ov"></i>Ovulation</span>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <section class="card trends" aria-labelledby="trendsH">
+    <div class="cardhead">
+      <h2 id="trendsH">Patterns &amp; trends</h2>
+      <div class="seg">
+        <button class="chip tw" data-win="all" aria-pressed="true">All time</button>
+        <button class="chip tw" data-win="90" aria-pressed="false">Last 90 days</button>
+      </div>
+    </div>
+    <p class="sub" id="trendSummary" style="margin:-2px 0 16px"></p>
+    <div class="trendgrid">
+      <div><h3 class="trh">Most logged symptoms</h3><div id="symTrend"></div></div>
+      <div><h3 class="trh mood">Most logged moods</h3><div id="moodTrend"></div></div>
+    </div>
+  </section>
+
+  <details class="settings">
+    <summary>Settings &amp; prediction tuning</summary>
+    <div class="setbody">
+      <div class="field"><label for="setUnit">Temperature unit</label><select id="setUnit"><option value="C">Celsius (°C)</option><option value="F">Fahrenheit (°F)</option></select></div>
+      <div class="field"><label for="setCycle">Default cycle length</label><input type="number" id="setCycle" min="15" max="60"></div>
+      <div class="field"><label for="setLuteal">Luteal phase length</label><input type="number" id="setLuteal" min="7" max="20"></div>
+      <div class="field"><label for="setPeriod">Default period length</label><input type="number" id="setPeriod" min="1" max="12"></div>
+      <div class="field"><label for="setMin">Min valid cycle</label><input type="number" id="setMin" min="10" max="40"></div>
+      <div class="field"><label for="setMax">Max valid cycle</label><input type="number" id="setMax" min="25" max="90"></div>
+      <div class="field"><label class="checkline" style="text-transform:none;letter-spacing:0;font-weight:600"><input type="checkbox" id="setLutealPredict"> Predict next period from ovulation + luteal length</label></div>
+    </div>
+  </details>
+
+  <footer>
+    <p><strong>How prediction works.</strong> The cycle length is the average of your last three in-range cycles (falling back to the default). The fertile window spans the five days before ovulation through the day after. Ovulation is taken from, in priority order, a manual mark, your basal-temperature shift, a wearable reading, a positive OPK, a fertility-monitor peak, then full ferning. The temperature shift is detected with a coverline: a run of low temperatures followed by a sustained rise of at least 0.1 °C.</p>
+    <p>All data stays in this browser only — nothing is uploaded. This is a planning aid, not a contraceptive method or medical advice.</p>
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* ---------- date helpers (integer YYYYMMDD, UTC-anchored) ---------- */
+function toDate(y){const Y=Math.floor(y/10000),M=Math.floor(y/100)%100,D=y%100;return new Date(Date.UTC(Y,M-1,D));}
+function ymdOf(d){return d.getUTCFullYear()*10000+(d.getUTCMonth()+1)*100+d.getUTCDate();}
+function addDays(y,n){const d=toDate(y);d.setUTCDate(d.getUTCDate()+n);return ymdOf(d);}
+function diffDays(a,b){return Math.round((toDate(a)-toDate(b))/86400000);}
+function todayYmd(){const n=new Date();return n.getFullYear()*10000+(n.getMonth()+1)*100+n.getDate();}
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONL=["January","February","March","April","May","June","July","August","September","October","November","December"];
+function fmt(y){if(!y)return"—";return MON[Math.floor(y/100)%100-1]+" "+(y%100);}
+function fmtLong(y){return MONL[Math.floor(y/100)%100-1]+" "+(y%100)+", "+Math.floor(y/10000);}
+
+/* ---------- TTC prediction engine — ported from the app's ttc.js (TTCModule) ---------- */
+const TTC={
+  data:null,
+  s(k,def){const v=this.data.settings[k];return v===undefined?def:v;},
+  enabled(k){const v=this.data.settings[k];return v===undefined?false:v==1;},
+  disabled(k){const v=this.data.settings[k];return v===undefined?false:v==0;},
+  periodsOfType(t){return this.data.periods.filter(p=>p.period_type===t).map(p=>p.yyyymmdd);},
+  allCycles(){return this.periodsOfType(0);},
+  allEnds(){return this.periodsOfType(1);},
+  allPregnancy(){return this.periodsOfType(3);},
+  mostRecentPregnancy(){const a=this.allPregnancy();return a.length?a[a.length-1]:null;},
+  startsAfterPregnancy(){const d=this.allCycles(),a=this.mostRecentPregnancy();if(!a)return d;return d.filter(x=>x>a);},
+  isValidLen(a){if(a<this.s("DefaultMinCycleKey",10))return false;if(this.s("HasNoneDefaultMaxCycleKey",false)===false&&a>this.s("DefaultMaxCycleKey",60))return false;return true;},
+  averageCycleLength(){
+    const h=this.startsAfterPregnancy();
+    if(h.length===0)return 0;
+    if(this.s("AlwaysDefaultCycleKey",0)==1||h.length<=1)return this.s("DefaultCycleKey",28);
+    const e=[];let k=0,c=h[h.length-1];
+    for(let d=h.length-2;d>=0;d--){
+      const g=h[d];const j=diffDays(c,g);c=g;
+      if(this.isValidLen(j)){e[k]=j;k++;if(k>=3)break;}
+    }
+    if(k===0)return this.s("DefaultCycleKey",28);
+    let a=0;for(let d=0;d<k;d++)a+=e[d];return Math.round(a/k);
+  },
+  endForStart(c){const e=this.allEnds();for(let a=0;a<e.length;a++){const d=e[a];if(d>=c){return diffDays(d,c)<=15?d:null;}}return null;},
+  periodDaysForStart(a){const b=this.endForStart(a);if(b)return diffDays(b,a)+1;return this.s("PeriodDaysKey",4);},
+  isCurrentCycle(a){const c=this.allCycles();return c.length?c[c.length-1]===a:false;},
+  nextCycleTo(c){const d=this.allCycles();const i=d.indexOf(c);if(i<0)return null;return i+1<d.length?d[i+1]:null;},
+  mostRecentNote(){const n=this.data.notes;return n.length?n[n.length-1]:null;},
+  ovAttrs(){return["cycle","ov_master","ov_manual","ov_temp","ov_temp_type","ov_temp_coverline","ov_temp_manual","ov_temp_manual_coverline","ov_watch","ov_opk","ov_fm","ov_ferning"];},
+  newOv(){const c={};for(const a of this.ovAttrs())c[a]=0;return c;},
+  givenOvForCycle(b){const c=this.newOv();c.cycle=b;if(!this.data.ovulations)return c;for(const o of this.data.ovulations)if(o.cycle===b)return Object.assign({},o);return c;},
+  manualOvInRange(d,a){for(const p of this.data.periods){if(p.period_type===4&&p.yyyymmdd>=d&&p.yyyymmdd<a)return p;}return null;},
+  notesInRange(d,a){return this.data.notes.filter(n=>n.yyyymmdd>=d&&n.yyyymmdd<a);},
+  tempsHashInRange(e,b){const a={};for(const d of this.data.notes){if(d.yyyymmdd>=e&&d.yyyymmdd<b&&d.temp!==0&&!d.temp_disregarded)a[d.yyyymmdd]=d.temp;}return a;},
+  tempsInCdSeq(hash,start,end){const out=[];const k=diffDays(end,start);let c=start;for(let d=0;d<k;d++){out.push(hash[c]||0);c=addDays(c,1);}return out;},
+  ovulationToUse(a){if(a.length===1)return a[0];if(a[a.length-1].cd-a[a.length-2].cd===1)return a[a.length-2];return a[a.length-1];},
+  predictedOvByTemp(s,d){
+    const u=0.1;
+    const hash=this.tempsHashInRange(s,d);
+    if(Object.keys(hash).length<4)return null;
+    const i=this.tempsInCdSeq(hash,s,d);
+    const trueOvs=[];let maybe=null;
+    for(let g=5;g<=i.length-2;g++){
+      const t=i[g],h=i[g+1];
+      if(t===0||h===0)continue;
+      if(h-t<u)continue;
+      let f=t,hasHigh=false,low=1;
+      for(let l=g-1;l>=g-5;l--){
+        const r=i[l];
+        if(r>0&&(h-r)>=u){low++;if(r>f)f=r;}
+        else if(r>0){hasHigh=true;break;}
+      }
+      if(hasHigh)continue;
+      if(low<3)continue;
+      let e=0,q=0;
+      if(g+2<i.length)e=i[g+2];
+      if(g+3<i.length)q=i[g+3];
+      if(e>0&&q>0){if(e-f>=u&&q-f>=u)trueOvs.push({cd:g,highLow:f});continue;}
+      if(e>0&&e-f<u)continue;
+      if(q>0&&q-f<u)continue;
+      maybe={cd:g,highLow:f};
+    }
+    let m=null,cover=0,type=0;
+    if(trueOvs.length){m=this.ovulationToUse(trueOvs);cover=m.highLow+0.05;type=1;}
+    else if(maybe){m=maybe;cover=m.highLow+0.05;type=0;}
+    if(m)return{yyyymmdd:addDays(s,m.cd),coverline:Math.round(cover*100)/100,type,cd:m.cd};
+    return null;
+  },
+  ttcOvForCycle(g){
+    const cur=this.isCurrentCycle(g);
+    let end;
+    if(cur){const mrn=this.mostRecentNote();let q=todayYmd();if(mrn&&mrn.yyyymmdd>q)q=mrn.yyyymmdd;end=addDays(q,1);}
+    else{end=this.nextCycleTo(g);if(!end)end=addDays(g,this.s("DefaultMaxCycleKey",60));}
+    const rec=this.givenOvForCycle(g);rec.cycle=g;rec.ov_temp=0;rec.ov_temp_type=0;rec.ov_temp_coverline=0;
+    const p=this.predictedOvByTemp(g,end);
+    if(p){rec.ov_temp=p.yyyymmdd;rec.ov_temp_type=p.type;rec.ov_temp_coverline=p.coverline;}
+    rec.ov_watch=0;rec.ov_opk=0;rec.ov_fm=0;rec.ov_ferning=0;
+    for(const o of this.notesInRange(g,end)){
+      if(rec.ov_watch===0&&(o.ttc_ovw===6||o.ttc_ovw===7))rec.ov_watch=o.yyyymmdd;
+      if(rec.ov_opk===0&&o.ttc_opk===2)rec.ov_opk=addDays(o.yyyymmdd,1);
+      if(rec.ov_fm===0&&o.ttc_fm===3)rec.ov_fm=o.yyyymmdd;
+      if(rec.ov_ferning===0&&o.ttc_ferning===2)rec.ov_ferning=o.yyyymmdd;
+    }
+    rec.ov_manual=0;const mo=this.manualOvInRange(g,end);if(mo)rec.ov_manual=mo.yyyymmdd;
+    rec.ov_master=this.ovMaster(rec);
+    return rec;
+  },
+  ovMaster(a){
+    if(a.ov_manual>0)return a.ov_manual;
+    if(a.ov_temp_manual>0)return a.ov_temp_manual;
+    if(a.ov_temp>0)return a.ov_temp;
+    if(a.ov_watch>0)return a.ov_watch;
+    if(a.ov_opk>0)return a.ov_opk;
+    if(a.ov_fm>0)return a.ov_fm;
+    if(a.ov_ferning>0)return a.ov_ferning;
+    return 0;
+  },
+  ovSource(a){
+    if(a.ov_manual>0)return"manual";
+    if(a.ov_temp_manual>0)return"temp";
+    if(a.ov_temp>0)return a.ov_temp_type===1?"temperature (confirmed)":"temperature (possible)";
+    if(a.ov_watch>0)return"wearable";
+    if(a.ov_opk>0)return"OPK";
+    if(a.ov_fm>0)return"monitor";
+    if(a.ov_ferning>0)return"ferning";
+    return"";
+  },
+  nextPeriodStart(){
+    const c=this.startsAfterPregnancy();if(c.length===0)return null;
+    const a=c[c.length-1];
+    if(!this.disabled("TTCModeKey")&&this.enabled("TTCPredictUsingLutealKey")){
+      let d=this.givenOvForCycle(a);if(d.ov_master===0)d=this.ttcOvForCycle(a);
+      if(d.ov_master>0)return addDays(d.ov_master,this.s("DefaultOvulationKey",14));
+    }
+    return addDays(a,this.averageCycleLength());
+  },
+  fertileDays(b,rec){
+    let a=rec?rec.ov_master:0;
+    if(a===0){let d=this.nextCycleTo(b);if(!d)d=this.nextPeriodStart();if(d)a=addDays(d,-this.s("DefaultOvulationKey",14));}
+    if(a===0)return{cd:0,length:0};
+    return{cd:diffDays(a,b)-5,length:7};
+  }
+};
+
+/* ---------- unit helpers ---------- */
+const toF=c=>Math.round((c*1.8+32)*100)/100;
+const fToC=f=>Math.round(((f-32)/1.8)*100)/100;
+function tempDisplay(c){if(state.settings.unit==="F")return toF(c);return c;}
+function tempStore(v){if(state.settings.unit==="F")return fToC(v);return Math.round(v*100)/100;}
+
+/* ---------- symptoms & moods (app-level; echo the original app's symptom/mood sets) ---------- */
+const SYMPTOMS=[["cramps","Cramps"],["headache","Headache"],["backache","Backache"],["bodyaches","Body aches"],["bloating","Bloating"],["tender","Tender breasts"],["nausea","Nausea"],["fatigue","Fatigue"],["acne","Acne"],["dizziness","Dizziness"],["cravings","Cravings"],["insomnia","Insomnia"]];
+const MOODS=[["happy","Happy"],["calm","Calm"],["energized","Energized"],["confident","Confident"],["inlove","In love"],["flirty","Flirty"],["irritable","Irritable"],["anxious","Anxious"],["sad","Sad"],["stressed","Stressed"],["tired","Tired"],["moody","Moody"],["sensitive","Sensitive"],["weepy","Weepy"],["angry","Angry"],["sick","Sick"]];
+const SYMNAME=Object.fromEntries(SYMPTOMS),MOODNAME=Object.fromEntries(MOODS);
+const SEVLBL=["","light","moderate","heavy"];
+let trendWin="all";
+
+/* ---------- state ---------- */
+const LS="cadence.tracker.v2";
+let state=null, selDay=todayYmd(), viewMonth=Math.floor(todayYmd()/100), selCycle=null;
+
+function blankState(){return{bleed:{},manualOv:{},notes:{},settings:{unit:"C",DefaultCycleKey:28,DefaultOvulationKey:14,PeriodDaysKey:4,DefaultMinCycleKey:10,DefaultMaxCycleKey:60,lutealPredict:true}};}
+
+function load(){
+  try{const raw=localStorage.getItem(LS);if(raw){state=JSON.parse(raw);return true;}}catch(e){}
+  return false;
+}
+function save(){try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){}}
+
+/* ---------- sample data (relative to today, in °C) ---------- */
+function buildSample(){
+  const s=blankState();
+  const today=todayYmd();
+  const starts=[addDays(today,-61),addDays(today,-33),addDays(today,-5)];
+  // bleeding days: 5 per period
+  for(const st of starts){for(let i=0;i<5;i++)s.bleed[addDays(st,i)]=1;}
+  // temps for the two completed cycles: lows then a shift after CD15 (ovulation ~CD15)
+  function fillCycle(start,len){
+    const lows=[36.42,36.38,36.45,36.40,36.37,36.44,36.41,36.39,36.46,36.40,36.43,36.38,36.42,36.44];
+    for(let cd=1;cd<=len;cd++){
+      const day=addDays(start,cd-1);
+      let t;
+      if(cd<=14){t=lows[(cd-1)%lows.length];}
+      else{const highs=[36.70,36.78,36.75,36.82,36.80,36.84,36.79,36.86,36.83,36.88,36.85,36.90,36.87,36.84];t=highs[(cd-15)%highs.length];}
+      if(!s.notes[day])s.notes[day]={};
+      s.notes[day].temp=t;
+    }
+    // fertility signs around ovulation
+    const n=(d,o)=>{const day=addDays(start,d-1);s.notes[day]=Object.assign(s.notes[day]||{},o);};
+    n(11,{cm:3}); n(12,{cm:4}); n(13,{cm:5,opk:2}); n(14,{cm:5,fm:3}); n(15,{cm:2});
+    n(14,{intimate:1}); n(10,{intimate:1}); n(16,{intimate:1});
+    n(1,{sym:{cramps:3,headache:2},moods:{tired:1,irritable:1}});
+    n(2,{sym:{cramps:2,backache:1},moods:{tired:1}});
+    n(3,{sym:{bloating:1},moods:{calm:1}});
+    n(13,{moods:{happy:1,energized:1,flirty:1}});
+    n(15,{moods:{inlove:1,confident:1}});
+    n(24,{sym:{bloating:2,tender:2},moods:{moody:1,sensitive:1}});
+    n(26,{sym:{bloating:3,cravings:2,acne:1},moods:{irritable:1,anxious:1}});
+    n(27,{sym:{headache:1,fatigue:2},moods:{weepy:1,moody:1}});
+  }
+  fillCycle(starts[0],28);
+  fillCycle(starts[1],28);
+  // current cycle: a handful of low temps so far
+  const cur=starts[2];
+  [36.41,36.39,36.44,36.40,36.42].forEach((t,i)=>{const day=addDays(cur,i);s.notes[day]=Object.assign(s.notes[day]||{},{temp:t});});
+  s.notes[addDays(cur,2)]=Object.assign(s.notes[addDays(cur,2)]||{},{opk:1});
+  const cn=(d,o)=>{const day=addDays(cur,d-1);s.notes[day]=Object.assign(s.notes[day]||{},o);};
+  cn(1,{sym:{cramps:3,headache:1},moods:{tired:1,irritable:1}});
+  cn(2,{sym:{cramps:2},moods:{tired:1}});
+  cn(4,{moods:{calm:1,energized:1}});
+  return s;
+}
+
+/* ---------- build engine data from state ---------- */
+function derivePeriods(){
+  const out=[];
+  const days=Object.keys(state.bleed).map(Number).filter(d=>state.bleed[d]).sort((a,b)=>a-b);
+  let i=0;
+  while(i<days.length){
+    let j=i;
+    while(j+1<days.length&&diffDays(days[j+1],days[j])===1)j++;
+    out.push({yyyymmdd:days[i],period_type:0});
+    out.push({yyyymmdd:days[j],period_type:1});
+    i=j+1;
+  }
+  for(const d of Object.keys(state.manualOv).map(Number).filter(x=>state.manualOv[x]))out.push({yyyymmdd:d,period_type:4});
+  out.sort((a,b)=>a.yyyymmdd-b.yyyymmdd||a.period_type-b.period_type);
+  return out;
+}
+function buildNotes(){
+  return Object.keys(state.notes).map(Number).sort((a,b)=>a-b).map(d=>{
+    const n=state.notes[d];
+    return{yyyymmdd:d,temp:n.temp||0,temp_disregarded:n.disregard?1:0,ttc_opk:n.opk||0,ttc_fm:n.fm||0,ttc_ferning:n.fern||0,ttc_ovw:n.ovw||0,cm:n.cm||0,intimate:n.intimate||0};
+  });
+}
+function refreshEngine(){
+  TTC.data={
+    periods:derivePeriods(),
+    notes:buildNotes(),
+    ovulations:[],
+    settings:{
+      DefaultCycleKey:state.settings.DefaultCycleKey,AlwaysDefaultCycleKey:0,
+      DefaultMinCycleKey:state.settings.DefaultMinCycleKey,DefaultMaxCycleKey:state.settings.DefaultMaxCycleKey,
+      HasNoneDefaultMaxCycleKey:false,DefaultOvulationKey:state.settings.DefaultOvulationKey,
+      PeriodDaysKey:state.settings.PeriodDaysKey,TTCModeKey:1,
+      TTCPredictUsingLutealKey:state.settings.lutealPredict?1:0
+    }
+  };
+}
+
+/* ---------- overlay computation for calendar ---------- */
+function computeOverlays(){
+  // returns map ymd -> {period,fertile,ovKind, pred}
+  const map={};
+  const set=(d,k,v)=>{(map[d]=map[d]||{})[k]=v;};
+  const cycles=TTC.allCycles();
+  // actual logged periods (bleed days)
+  for(const d of Object.keys(state.bleed).map(Number))if(state.bleed[d])set(d,"period",true);
+  // per actual cycle: fertile window + ovulation
+  for(const cs of cycles){
+    const rec=TTC.ttcOvForCycle(cs);
+    const fw=TTC.fertileDays(cs,rec);
+    if(fw.length>0){const fs=addDays(cs,fw.cd);for(let k=0;k<fw.length;k++)set(addDays(fs,k),"fertile",true);}
+    if(rec.ov_master>0)set(rec.ov_master,"ov",rec.ov_master===todayYmd()?"ov":"ov");
+  }
+  // projected future cycles (next 3) based on prediction
+  let p=TTC.nextPeriodStart();
+  const avg=TTC.averageCycleLength()||state.settings.DefaultCycleKey;
+  const plen=state.settings.PeriodDaysKey;
+  const lut=state.settings.DefaultOvulationKey;
+  for(let c=0;c<4&&p;c++){
+    for(let k=0;k<plen;k++)set(addDays(p,k),"pred",true);
+    const nextP=addDays(p,avg);
+    const ovEst=addDays(nextP,-lut);
+    for(let k=-5;k<=1;k++){const d=addDays(ovEst,k);if(!(map[d]&&map[d].fertile))set(d,"predfertile",true);}
+    set(ovEst,"predov",true);
+    p=nextP;
+  }
+  return map;
+}
+
+/* ---------- rendering ---------- */
+const $=id=>document.getElementById(id);
+
+function renderTiles(){
+  refreshEngine();
+  const today=todayYmd();
+  const cycles=TTC.startsAfterPregnancy();
+  const cur=cycles.length?cycles[cycles.length-1]:null;
+  const avg=TTC.averageCycleLength();
+  const cd=cur?diffDays(today,cur)+1:null;
+  const nextP=TTC.nextPeriodStart();
+  const daysTo=nextP?diffDays(nextP,today):null;
+  // ovulation + fertile for current cycle
+  let ovTxt="—",ovSub="log temp or signs",fwTxt="—";
+  if(cur){
+    const rec=TTC.ttcOvForCycle(cur);
+    if(rec.ov_master>0){ovTxt=fmt(rec.ov_master);ovSub=TTC.ovSource(rec);}
+    const fw=TTC.fertileDays(cur,rec);
+    if(fw.length>0){const fs=addDays(cur,fw.cd),fe=addDays(fs,fw.length-1);fwTxt=fmt(fs)+" – "+fmt(fe);}
+  }
+  const tiles=[
+    {lead:true,k:"Cycle day",v:cd?("Day "+cd):"—",s:cur?("Started "+fmt(cur)):"log a period to begin"},
+    {k:"Next period",v:nextP?fmt(nextP):"—",s:daysTo!=null?(daysTo===0?"today":daysTo>0?("in "+daysTo+" day"+(daysTo>1?"s":"")):("overdue "+(-daysTo)+"d")):"",dot:"var(--period)"},
+    {k:"Ovulation",v:ovTxt,s:ovSub,dot:"var(--ovulation)"},
+    {k:"Fertile window",v:fwTxt==="—"?"—":fwTxt.split(" – ")[0],s:fwTxt==="—"?"needs ovulation":"through "+fwTxt.split(" – ")[1],dot:"var(--fertile)"}
+  ];
+  $("tiles").innerHTML=tiles.map(t=>`<div class="tile${t.lead?" lead":""}">
+     <div class="k">${t.dot?`<span class="dot" style="background:${t.dot}"></span>`:""}${t.k}</div>
+     <div class="v num">${t.v}</div><div class="s">${t.s||""}</div></div>`).join("");
+  // avg into cycle-day tile subtitle? keep separate — add avg to lead tile
+  $("tiles").firstChild.querySelector(".s").textContent=cur?("Started "+fmt(cur)+" · avg "+(avg||state.settings.DefaultCycleKey)+"d"):"log a period to begin";
+}
+
+function renderCalendar(){
+  const overlays=computeOverlays();
+  const today=todayYmd();
+  const y=Math.floor(viewMonth/100),m=viewMonth%100;
+  $("monthLabel").textContent=MONL[m-1]+" "+y;
+  const first=new Date(Date.UTC(y,m-1,1));
+  const startDow=first.getUTCDay();
+  const dim=new Date(Date.UTC(y,m,0)).getUTCDate();
+  let html="";
+  for(let i=0;i<startDow;i++)html+=`<div class="cell pad"></div>`;
+  for(let d=1;d<=dim;d++){
+    const ymd=y*10000+m*100+d;
+    const o=overlays[ymd]||{};
+    const cls=["cell"];
+    if(o.period)cls.push("period");
+    if(o.fertile)cls.push("fertile");
+    if(o.pred)cls.push("predperiod");
+    if(ymd===today)cls.push("today");
+    if(ymd===selDay)cls.push("sel");
+    let corner="";
+    if(o.ov)corner=`<span class="ovring" title="Ovulation"></span><span class="ovlabel">OV</span>`;
+    else if(o.predov)corner=`<span class="ovring pred" title="Predicted ovulation"></span>`;
+    const n=state.notes[ymd]||{};
+    let marks="";
+    if(n.temp&&!n.disregard)marks+=`<span class="m temp" title="Temp logged"></span>`;
+    if((n.sym&&Object.keys(n.sym).length)||(n.moods&&Object.keys(n.moods).length))marks+=`<span class="m note" title="Symptoms / moods"></span>`;
+    if(n.intimate)marks+=`<span class="m intim" title="Intimate">♥</span>`;
+    html+=`<button class="${cls.join(" ")}" data-ymd="${ymd}" aria-label="${MONL[m-1]} ${d}">
+      <span class="daynum num">${d}</span><span class="marks">${marks}</span>${corner}</button>`;
+  }
+  $("cal").innerHTML=html;
+  $("cal").querySelectorAll(".cell:not(.pad)").forEach(el=>{
+    el.addEventListener("click",()=>{selDay=Number(el.dataset.ymd);renderDay();renderCalendar();});
+  });
+}
+
+function renderDay(){
+  const n=state.notes[selDay]||{};
+  const cur=(function(){const c=TTC.startsAfterPregnancy();return c.length?c[c.length-1]:null;})();
+  // find which cycle selDay belongs to, for CD label
+  let cdTxt="";
+  const cycles=TTC.allCycles();
+  let owner=null;for(const cs of cycles)if(cs<=selDay)owner=cs;
+  if(owner){const next=TTC.nextCycleTo(owner);if(!next||selDay<next)cdTxt="Cycle day "+(diffDays(selDay,owner)+1);}
+  $("dayMeta").textContent=fmtLong(selDay)+(cdTxt?" · "+cdTxt:"");
+  $("periodChip").setAttribute("aria-pressed",state.bleed[selDay]?"true":"false");
+  $("ovChip").setAttribute("aria-pressed",state.manualOv[selDay]?"true":"false");
+  $("intimChip").setAttribute("aria-pressed",n.intimate?"true":"false");
+  $("tempInput").value=n.temp?tempDisplay(n.temp):"";
+  $("disregard").checked=!!n.disregard;
+  $("opkSel").value=String(n.opk||0);
+  $("cmSel").value=String(n.cm||0);
+  $("fmSel").value=String(n.fm||0);
+  $("fernSel").value=String(n.fern||0);
+  $("ovwSel").value=String(n.ovw||0);
+  $("noteInput").value=n.note||"";
+  const sym=n.sym||{};
+  $("symChips").innerHTML=SYMPTOMS.map(([id,name])=>{const s=sym[id]||0;const dots=s?` <span class="sev">${"•".repeat(s)}</span>`:"";return `<button class="chip symchip" data-sym="${id}" aria-pressed="${s>0}" title="${name}${s?" — "+SEVLBL[s]:""}">${name}${dots}</button>`;}).join("");
+  const mds=n.moods||{};
+  $("moodChips").innerHTML=MOODS.map(([id,name])=>`<button class="chip moodchip" data-mood="${id}" aria-pressed="${mds[id]?"true":"false"}">${name}</button>`).join("");
+  $("unitLbl").textContent=state.settings.unit==="F"?"°F":"°C";
+}
+
+function note(){return state.notes[selDay]=state.notes[selDay]||{};}
+function cleanNote(d){const n=state.notes[d];if(!n)return;const hasSym=n.sym&&Object.keys(n.sym).length,hasMood=n.moods&&Object.keys(n.moods).length;const empty=!n.temp&&!n.opk&&!n.cm&&!n.fm&&!n.fern&&!n.ovw&&!n.intimate&&!n.note&&!n.disregard&&!hasSym&&!hasMood;if(empty)delete state.notes[d];}
+
+function commit(){save();renderTiles();pickDefaultCycleIfNeeded();renderCalendar();renderChart();renderTrends();}
+
+/* ---------- chart ---------- */
+function cycleList(){return TTC.allCycles();}
+function pickDefaultCycleIfNeeded(){
+  const cs=cycleList();
+  if(cs.length===0){selCycle=null;return;}
+  if(selCycle&&cs.includes(selCycle))return;
+  // default: most recent cycle that has an ov_master, else last
+  for(let i=cs.length-1;i>=0;i--){if(TTC.ttcOvForCycle(cs[i]).ov_master>0){selCycle=cs[i];return;}}
+  selCycle=cs[cs.length-1];
+}
+function renderChart(){
+  const host=$("chart");
+  const cs=cycleList();
+  if(!selCycle||cs.length===0){host.innerHTML=`<div class="empty">Log a period and a few basal temperatures to see your chart.</div>`;$("cycleLabel").textContent="—";return;}
+  const idx=cs.indexOf(selCycle);
+  $("cycleLabel").textContent="Cycle "+fmt(selCycle);
+  $("prevCycle").disabled=idx<=0;$("nextCycle").disabled=idx>=cs.length-1;
+  const isCur=TTC.isCurrentCycle(selCycle);
+  let end=TTC.nextCycleTo(selCycle);
+  if(!end){const mrn=TTC.mostRecentNote();let q=todayYmd();if(mrn&&mrn.yyyymmdd>q)q=mrn.yyyymmdd;end=addDays(q,1);}
+  let N=diffDays(end,selCycle);N=Math.max(N,10);N=Math.min(N,50);
+  const rec=TTC.ttcOvForCycle(selCycle);
+  const fw=TTC.fertileDays(selCycle,rec);
+  const pdays=TTC.periodDaysForStart(selCycle);
+
+  // collect temps (display unit) per CD
+  const pts=[];
+  for(let cd=1;cd<=N;cd++){
+    const day=addDays(selCycle,cd-1);
+    const nn=state.notes[day];
+    if(nn&&nn.temp&&!nn.disregard)pts.push({cd,day,t:tempDisplay(nn.temp),opk:nn.opk||0,cm:nn.cm||0});
+    else pts.push({cd,day,t:null,opk:(nn&&nn.opk)||0,cm:(nn&&nn.cm)||0});
+  }
+  const temps=pts.filter(p=>p.t!=null).map(p=>p.t);
+  const cover=rec.ov_temp_coverline>0?tempDisplay(rec.ov_temp_coverline):0;
+  let lo,hi;
+  if(temps.length){lo=Math.min(...temps,cover||Infinity);hi=Math.max(...temps,cover||-Infinity);}
+  else{lo=state.settings.unit==="F"?97.0:36.1;hi=state.settings.unit==="F"?99.0:37.2;}
+  const padT=(hi-lo)*0.18||(state.settings.unit==="F"?0.4:0.2);lo-=padT;hi+=padT;
+
+  const W=760,H=300,mL=46,mR=14,mT=14,mB=54;
+  const plotW=W-mL-mR,plotH=H-mT-mB;
+  const x=cd=>mL+(N<=1?0:(cd-1)/(N-1)*plotW);
+  const yv=t=>mT+plotH-(t-lo)/(hi-lo)*plotH;
+  const axisC="var(--muted)",hairC="var(--hair)";
+  let svg=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Basal body temperature across the cycle with fertile window and ovulation">`;
+
+  // period band
+  if(pdays>0){const x0=x(1)-((N>1)?plotW/(N-1)/2:6),x1=x(Math.min(pdays,N))+((N>1)?plotW/(N-1)/2:6);
+    svg+=`<rect x="${Math.max(mL,x0).toFixed(1)}" y="${mT}" width="${(Math.min(x1,mL+plotW)-Math.max(mL,x0)).toFixed(1)}" height="${plotH}" fill="var(--period-fill)" opacity="0.7"/>`;}
+  // fertile band
+  if(fw.length>0){const a=Math.max(1,fw.cd+1),b=Math.min(N,fw.cd+fw.length);if(b>=a){const half=(N>1)?plotW/(N-1)/2:6;const x0=Math.max(mL,x(a)-half),x1=Math.min(mL+plotW,x(b)+half);
+    svg+=`<rect x="${x0.toFixed(1)}" y="${mT}" width="${(x1-x0).toFixed(1)}" height="${plotH}" fill="var(--fertile-fill)" opacity="0.75"/>`;}}
+
+  // horizontal gridlines (temp)
+  const ticks=4;
+  for(let i=0;i<=ticks;i++){const tv=lo+(hi-lo)*i/ticks;const yy=yv(tv);
+    svg+=`<line x1="${mL}" y1="${yy.toFixed(1)}" x2="${mL+plotW}" y2="${yy.toFixed(1)}" stroke="${hairC}" stroke-width="1"/>`;
+    svg+=`<text x="${mL-7}" y="${(yy+3.5).toFixed(1)}" text-anchor="end" font-size="10.5" fill="${axisC}" font-family="var(--body)">${tv.toFixed(1)}</text>`;}
+
+  // ovulation vertical line
+  if(rec.ov_master>0){const ocd=diffDays(rec.ov_master,selCycle)+1;if(ocd>=1&&ocd<=N){const ox=x(ocd);
+    svg+=`<line x1="${ox.toFixed(1)}" y1="${mT}" x2="${ox.toFixed(1)}" y2="${mT+plotH}" stroke="var(--ovulation)" stroke-width="2"/>`;
+    svg+=`<circle cx="${ox.toFixed(1)}" cy="${mT+8}" r="5" fill="var(--ovulation)"/>`;
+    const anchor=ocd>N*0.75?"end":"start",dx=ocd>N*0.75?-7:7;
+    svg+=`<text x="${(ox+dx).toFixed(1)}" y="${mT+11}" text-anchor="${anchor}" font-size="10.5" font-weight="700" fill="var(--ovulation)" font-family="var(--body)">Ovulation</text>`;}}
+
+  // coverline
+  if(cover>0){const cy=yv(cover);svg+=`<line x1="${mL}" y1="${cy.toFixed(1)}" x2="${mL+plotW}" y2="${cy.toFixed(1)}" stroke="var(--ovulation)" stroke-width="2" stroke-dasharray="5 4"/>`;}
+
+  // x ticks (cycle day) — every ~5 days + CD1
+  for(let cd=1;cd<=N;cd++){if(cd===1||cd%5===0){svg+=`<text x="${x(cd).toFixed(1)}" y="${mT+plotH+16}" text-anchor="middle" font-size="10.5" fill="${axisC}" font-family="var(--body)">${cd}</text>`;}}
+  svg+=`<text x="${(mL+plotW/2).toFixed(1)}" y="${H-4}" text-anchor="middle" font-size="10.5" fill="${axisC}" font-family="var(--body)">Cycle day</text>`;
+
+  // temperature polyline (break on gaps)
+  let seg=[];const segs=[];
+  for(const p of pts){if(p.t!=null)seg.push(p);else if(seg.length){segs.push(seg);seg=[];}}
+  if(seg.length)segs.push(seg);
+  for(const s of segs){if(s.length<2)continue;svg+=`<polyline fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" points="${s.map(p=>x(p.cd).toFixed(1)+","+yv(p.t).toFixed(1)).join(" ")}"/>`;}
+  // dots
+  for(const p of pts){if(p.t==null)continue;svg+=`<circle cx="${x(p.cd).toFixed(1)}" cy="${yv(p.t).toFixed(1)}" r="3.6" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.4"/>`;}
+
+  // OPK / CM glyph row under axis
+  for(const p of pts){
+    if(p.opk===2)svg+=`<text x="${x(p.cd).toFixed(1)}" y="${mT+plotH+30}" text-anchor="middle" font-size="10" font-weight="700" fill="var(--fertile)" font-family="var(--body)">OPK+</text>`;
+    else if(p.cm>=4)svg+=`<text x="${x(p.cd).toFixed(1)}" y="${mT+plotH+30}" text-anchor="middle" font-size="11" fill="var(--fertile)" font-family="var(--body)">${p.cm===5?"EW":"W"}</text>`;
+  }
+
+  svg+=`</svg>`;
+  host.innerHTML=svg;
+
+  // hover tooltip
+  const svgEl=host.querySelector("svg"),tip=$("tip");
+  const plotted=pts.filter(p=>p.t!=null);
+  function onMove(ev){
+    const r=svgEl.getBoundingClientRect();
+    const px=(ev.clientX-r.left)/r.width*W;
+    let best=null,bd=1e9;
+    for(const p of plotted){const d=Math.abs(x(p.cd)-px);if(d<bd){bd=d;best=p;}}
+    if(!best||bd>plotW/N*1.5){tip.style.opacity=0;return;}
+    const sx=r.left-host.getBoundingClientRect().left+x(best.cd)/W*r.width;
+    const sy=r.top-host.getBoundingClientRect().top+yv(best.t)/H*r.height;
+    tip.style.left=sx+"px";tip.style.top=sy+"px";tip.style.opacity=1;
+    tip.innerHTML=`CD ${best.cd} · ${fmt(best.day)} · <span class="num">${best.t.toFixed(2)}°${state.settings.unit}</span>`;
+  }
+  svgEl.addEventListener("mousemove",onMove);
+  svgEl.addEventListener("mouseleave",()=>tip.style.opacity=0);
+}
+
+/* ---------- wire up controls ---------- */
+function toggle(obj,key){if(obj[key])delete obj[key];else obj[key]=1;}
+
+$("periodChip").addEventListener("click",()=>{toggle(state.bleed,selDay);renderDay();commit();});
+$("ovChip").addEventListener("click",()=>{toggle(state.manualOv,selDay);renderDay();commit();});
+$("intimChip").addEventListener("click",()=>{const n=note();n.intimate=n.intimate?0:1;cleanNote(selDay);renderDay();commit();});
+$("tempInput").addEventListener("change",e=>{const v=parseFloat(e.target.value);const n=note();if(isFinite(v)&&v>0)n.temp=tempStore(v);else delete n.temp;cleanNote(selDay);commit();});
+$("disregard").addEventListener("change",e=>{note().disregard=e.target.checked?1:0;if(!e.target.checked)delete state.notes[selDay].disregard;cleanNote(selDay);commit();});
+function selField(id,key){$(id).addEventListener("change",e=>{const v=Number(e.target.value);const n=note();if(v)n[key]=v;else delete n[key];cleanNote(selDay);commit();});}
+selField("opkSel","opk");selField("cmSel","cm");selField("fmSel","fm");selField("fernSel","fern");selField("ovwSel","ovw");
+$("noteInput").addEventListener("input",e=>{const n=note();const v=e.target.value.trim();if(v)n.note=v;else delete n.note;});
+$("noteInput").addEventListener("change",()=>{cleanNote(selDay);save();});
+$("symChips").addEventListener("click",e=>{const b=e.target.closest("[data-sym]");if(!b)return;const n=note();n.sym=n.sym||{};const id=b.dataset.sym,cur=n.sym[id]||0,nx=(cur+1)%4;if(nx)n.sym[id]=nx;else delete n.sym[id];if(!Object.keys(n.sym).length)delete n.sym;cleanNote(selDay);renderDay();commit();});
+$("moodChips").addEventListener("click",e=>{const b=e.target.closest("[data-mood]");if(!b)return;const n=note();n.moods=n.moods||{};const id=b.dataset.mood;if(n.moods[id])delete n.moods[id];else n.moods[id]=1;if(!Object.keys(n.moods).length)delete n.moods;cleanNote(selDay);renderDay();commit();});
+document.querySelectorAll(".tw").forEach(b=>b.addEventListener("click",()=>{trendWin=b.dataset.win;document.querySelectorAll(".tw").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));renderTrends();}));
+
+function cycleDayOfYmd(y,cycles){let owner=null;for(const cs of cycles)if(cs<=y)owner=cs;if(owner==null)return null;const next=TTC.nextCycleTo(owner);if(next&&y>=next)return null;return diffDays(y,owner)+1;}
+function renderTrends(){
+  const cycles=TTC.allCycles();
+  const since=trendWin==="90"?addDays(todayYmd(),-90):0;
+  const symAgg={},moodAgg={};let dSym=0,dMood=0;
+  for(const key of Object.keys(state.notes)){
+    const y=Number(key);if(since&&y<since)continue;
+    const n=state.notes[key];const cd=cycleDayOfYmd(y,cycles);
+    if(n.sym&&Object.keys(n.sym).length){dSym++;for(const id in n.sym){const a=symAgg[id]||(symAgg[id]={c:0,cds:[]});a.c++;if(cd)a.cds.push(cd);}}
+    if(n.moods&&Object.keys(n.moods).length){dMood++;for(const id in n.moods){const a=moodAgg[id]||(moodAgg[id]={c:0,cds:[]});a.c++;if(cd)a.cds.push(cd);}}
+  }
+  renderBars("symTrend",symAgg,SYMNAME,"var(--accent)");
+  renderBars("moodTrend",moodAgg,MOODNAME,"var(--fertile)");
+  $("trendSummary").textContent=(dSym+dMood)?`Based on ${dSym} day${dSym===1?"":"s"} with symptoms and ${dMood} with moods${trendWin==="90"?", last 90 days":""}. “~CD” is the typical cycle day it occurs.`:"Log symptoms and moods on your daily entries to see your patterns here.";
+}
+function renderBars(elId,agg,names,color){
+  const rows=Object.keys(agg).map(id=>({id,c:agg[id].c,cd:agg[id].cds.length?Math.round(agg[id].cds.reduce((a,b)=>a+b,0)/agg[id].cds.length):null})).sort((a,b)=>b.c-a.c).slice(0,8);
+  if(!rows.length){$(elId).innerHTML=`<div class="trendempty">Nothing logged yet.</div>`;return;}
+  const max=rows[0].c;
+  $(elId).innerHTML=rows.map(r=>`<div class="trendrow"><div class="nm">${names[r.id]||r.id}</div><div class="track"><div class="fill" style="width:${Math.round(r.c/max*100)}%;background:${color}"></div></div><div class="ct">${r.c}×${r.cd?" · ~CD "+r.cd:""}</div></div>`).join("");
+}
+
+$("prevMonth").addEventListener("click",()=>{viewMonth=stepMonth(viewMonth,-1);renderCalendar();});
+$("nextMonth").addEventListener("click",()=>{viewMonth=stepMonth(viewMonth,1);renderCalendar();});
+function stepMonth(ym,d){let y=Math.floor(ym/100),m=ym%100+d;while(m<1){m+=12;y--;}while(m>12){m-=12;y++;}return y*100+m;}
+$("prevCycle").addEventListener("click",()=>{const cs=cycleList();const i=cs.indexOf(selCycle);if(i>0){selCycle=cs[i-1];renderChart();}});
+$("nextCycle").addEventListener("click",()=>{const cs=cycleList();const i=cs.indexOf(selCycle);if(i<cs.length-1){selCycle=cs[i+1];renderChart();}});
+
+$("themeBtn").addEventListener("click",()=>{
+  const cur=document.documentElement.getAttribute("data-theme");
+  const sysDark=window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches;
+  let next;
+  if(!cur)next=sysDark?"light":"dark";else if(cur==="dark")next="light";else next="dark";
+  document.documentElement.setAttribute("data-theme",next);
+  try{localStorage.setItem(LS+".theme",next);}catch(e){}
+  renderChart();
+});
+$("sampleBtn").addEventListener("click",()=>{state=buildSample();selDay=todayYmd();viewMonth=Math.floor(todayYmd()/100);selCycle=null;save();boot(false);});
+$("clearBtn").addEventListener("click",()=>{state=blankState();selDay=todayYmd();viewMonth=Math.floor(todayYmd()/100);selCycle=null;save();boot(false);});
+
+/* settings */
+function wireSettings(){
+  $("setUnit").value=state.settings.unit;
+  $("setCycle").value=state.settings.DefaultCycleKey;
+  $("setLuteal").value=state.settings.DefaultOvulationKey;
+  $("setPeriod").value=state.settings.PeriodDaysKey;
+  $("setMin").value=state.settings.DefaultMinCycleKey;
+  $("setMax").value=state.settings.DefaultMaxCycleKey;
+  $("setLutealPredict").checked=!!state.settings.lutealPredict;
+}
+$("setUnit").addEventListener("change",e=>{state.settings.unit=e.target.value;renderDay();commit();});
+function numSet(id,key,min,max){$(id).addEventListener("change",e=>{let v=parseInt(e.target.value,10);if(!isFinite(v))return;v=Math.max(min,Math.min(max,v));state.settings[key]=v;e.target.value=v;commit();});}
+numSet("setCycle","DefaultCycleKey",15,60);numSet("setLuteal","DefaultOvulationKey",7,20);numSet("setPeriod","PeriodDaysKey",1,12);numSet("setMin","DefaultMinCycleKey",10,40);numSet("setMax","DefaultMaxCycleKey",25,90);
+$("setLutealPredict").addEventListener("change",e=>{state.settings.lutealPredict=e.target.checked;commit();});
+
+/* ---------- boot ---------- */
+function boot(firstLoad){
+  refreshEngine();
+  pickDefaultCycleIfNeeded();
+  wireSettings();
+  renderTiles();renderCalendar();renderDay();renderChart();renderTrends();
+}
+(function init(){
+  try{const t=localStorage.getItem(LS+".theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}
+  if(!load()){state=buildSample();save();}
+  // migrate/guard
+  if(!state.settings)state.settings=blankState().settings;
+  boot(true);
+})();
+</script>
